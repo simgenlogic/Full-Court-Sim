@@ -46,8 +46,7 @@ export interface PlayerRuntimeState {
   teamId: string
   position: Position // static, copied in at init
   ratings: PlayerRatings // static, copied in at init — the engine's self-contained source of truth
-  stamina: number // 0-100, current effective stamina
-  fatigue: number // 0-100, accrues on court, recovers on bench
+  fatigue: number // 0-100, accrues on court (rate set by ratings.stamina), recovers on bench
   fouls: number // personal fouls, 0-6 (foul out at 6)
   secondsOnCourt: number // cumulative, drives substitution decisions
   onCourt: boolean

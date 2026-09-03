@@ -31,7 +31,6 @@ function initTeamRuntimeState(
       teamId: team.id,
       position: player.position,
       ratings: player.ratings,
-      stamina: 100,
       fatigue: 0,
       fouls: 0,
       secondsOnCourt: 0,
