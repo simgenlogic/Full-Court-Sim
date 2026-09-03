@@ -2,7 +2,8 @@
 // Enforces the engine/render/ui architectural boundary described in the project docs:
 //   - src/engine/** is pure: no React/DOM imports, no Math.random(), no reaching into render/ui.
 //   - src/render/** and src/ui/** may only import the engine's public barrel (src/engine/index.ts),
-//     never an individual engine module directly.
+//     never an individual engine module directly. (src/data/** is exempt: static rosters are plain
+//     data conforming to engine-defined shapes, not application logic reaching into the engine.)
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { extname, join, relative } from 'node:path'
 
@@ -27,7 +28,9 @@ const errors = []
 
 for (const file of walk(srcDir)) {
   const rel = relative(root, file)
-  const content = readFileSync(file, 'utf8')
+  const raw = readFileSync(file, 'utf8')
+  // Strip comments so prose describing the rule (e.g. "never call Math.random()") doesn't self-trigger it.
+  const content = raw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
   const isEngine = rel.startsWith('src/engine/')
   const isEngineIndex = rel === 'src/engine/index.ts'
 
@@ -45,7 +48,8 @@ for (const file of walk(srcDir)) {
     if (isEngine && !isEngineIndex && (spec.includes('/render/') || spec.includes('/ui/'))) {
       errors.push(`${rel}: engine code must not import from render/ or ui/ (imports "${spec}").`)
     }
-    if (!isEngine && /\/engine\//.test(spec) && !/\/engine(\/index(\.ts)?)?$/.test(spec)) {
+    const isRenderOrUi = rel.startsWith('src/render/') || rel.startsWith('src/ui/')
+    if (isRenderOrUi && /\/engine\//.test(spec) && !/\/engine(\/index(\.ts)?)?$/.test(spec)) {
       errors.push(
         `${rel}: only the engine's public barrel may be imported (got "${spec}") — import from ".../engine" instead.`,
       )
