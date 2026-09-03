@@ -29,6 +29,8 @@ function initTeamRuntimeState(
     players[player.id] = {
       playerId: player.id,
       teamId: team.id,
+      position: player.position,
+      ratings: player.ratings,
       stamina: 100,
       fatigue: 0,
       fouls: 0,

@@ -44,6 +44,8 @@ export type ShotType = 'rim' | 'mid' | 'three'
 export interface PlayerRuntimeState {
   playerId: string
   teamId: string
+  position: Position // static, copied in at init
+  ratings: PlayerRatings // static, copied in at init — the engine's self-contained source of truth
   stamina: number // 0-100, current effective stamina
   fatigue: number // 0-100, accrues on court, recovers on bench
   fouls: number // personal fouls, 0-6 (foul out at 6)
@@ -155,7 +157,7 @@ export interface ReboundEvent extends BaseEvent {
   isOffensive: boolean
 }
 
-export type TurnoverCause = 'bad-pass' | 'lost-ball' | 'offensive-foul' | 'shot-clock-violation'
+export type TurnoverCause = 'bad-pass' | 'lost-ball' | 'offensive-foul'
 
 export interface TurnoverEvent extends BaseEvent {
   type: 'turnover'
