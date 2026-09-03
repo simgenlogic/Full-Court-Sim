@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { ironhawks, thunderbolts } from '../../src/data/teams'
 import { simulateGame } from '../../src/engine/simulateGame'
-import type { GameEvent, OffenseStyle } from '../../src/engine/types'
+import type { GameEvent } from '../../src/engine/types'
 
 const SEED_COUNT = 100
 
@@ -30,33 +30,29 @@ function runBatch(options: Parameters<typeof simulateGame>[3]) {
   return totals
 }
 
-describe('defense style visibly shifts the offense\'s shot quality (openness)', () => {
-  it('help-heavy defense suppresses rim FG% versus drop defense', () => {
-    const vsDrop = runBatch({ awayDefenseStyle: 'drop' })
-    const vsHelpHeavy = runBatch({ awayDefenseStyle: 'help-heavy' })
+describe("defense style visibly shifts the offense's shot quality (openness)", () => {
+  // Computed once here (test collection time) and shared by both assertions below — same
+  // coverage as calling runBatch inside each `it`, half the simulated games.
+  const vsDrop = runBatch({ awayDefenseStyle: 'drop' })
+  const vsHelpHeavy = runBatch({ awayDefenseStyle: 'help-heavy' })
 
-    const rimPct = (t: ReturnType<typeof runBatch>) => t.rimMade / t.rimAttempted
+  it("help-heavy defense suppresses rim FG% versus drop defense", () => {
+    const rimPct = (t: typeof vsDrop) => t.rimMade / t.rimAttempted
     expect(rimPct(vsHelpHeavy)).toBeLessThan(rimPct(vsDrop))
   })
 
   it('help-heavy defense opens up three-point looks versus drop defense', () => {
-    const vsDrop = runBatch({ awayDefenseStyle: 'drop' })
-    const vsHelpHeavy = runBatch({ awayDefenseStyle: 'help-heavy' })
-
-    const threePct = (t: ReturnType<typeof runBatch>) => t.threeMade / t.threeAttempted
+    const threePct = (t: typeof vsDrop) => t.threeMade / t.threeAttempted
     expect(threePct(vsHelpHeavy)).toBeGreaterThan(threePct(vsDrop))
   })
 })
 
-describe('offense style visibly shifts the team\'s own shot selection', () => {
-  function threePointAttemptRate(offenseStyle: OffenseStyle) {
-    const totals = runBatch({ homeOffenseStyle: offenseStyle })
-    return totals.threeAttempted / totals.allAttempted
-  }
+describe("offense style visibly shifts the team's own shot selection", () => {
+  const motion = runBatch({ homeOffenseStyle: 'motion' })
+  const pickAndRoll = runBatch({ homeOffenseStyle: 'pick-and-roll' })
 
   it('a motion-heavy offense takes a bigger share of threes than a pick-and-roll-heavy offense', () => {
-    const motionRate = threePointAttemptRate('motion')
-    const pnrRate = threePointAttemptRate('pick-and-roll')
-    expect(motionRate).toBeGreaterThan(pnrRate)
+    const threePointAttemptRate = (t: typeof motion) => t.threeAttempted / t.allAttempted
+    expect(threePointAttemptRate(motion)).toBeGreaterThan(threePointAttemptRate(pickAndRoll))
   })
 })
