@@ -215,14 +215,18 @@
   padding: 5px 8px;
 }
 
+.table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  border-radius: 10px;
+}
+
 .box-score,
 .roster-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 12px;
   background: #1d1e28;
-  border-radius: 10px;
-  overflow: hidden;
 }
 .box-score caption,
 .roster-table caption {
