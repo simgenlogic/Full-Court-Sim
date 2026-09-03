@@ -1,4 +1,4 @@
-import { averageEffectiveRating, effectiveRating, getOnCourtPlayers, pickBallHandler, pickScreener, weakestInteriorDefender } from './ratings'
+import { averageEffectiveRating, effectiveRating, getOnCourtPlayers, pickBallHandler, pickScreener, pickThreePointThreat, weakestInteriorDefender } from './ratings'
 import type { RNG } from './rng'
 import { rngPick } from './rng'
 import type { ActionType, OffenseStyle, TeamRuntimeState } from './types'
@@ -56,8 +56,12 @@ export function selectAction(
     return { action, primaryPlayerId: primary.playerId }
   }
 
-  // For post-up, "secondary" is the post player who receives the entry pass and is the primary
-  // scoring option; "primary" stays the ball handler who makes the entry pass.
-  const secondary = pickScreener(offensePlayers, primary.playerId, rng)
+  // "secondary" means different things per action: the screener/post threat for pick-and-roll and
+  // post-up (a big feeding off interior defense + rebounding), but the kick-out shooting threat for
+  // drive-and-kick and motion — casting a low-3PT big as the kick-out target there was a bug.
+  const secondary =
+    action === 'drive-and-kick' || action === 'motion'
+      ? pickThreePointThreat(offensePlayers, [primary.playerId], rng)
+      : pickScreener(offensePlayers, primary.playerId, rng)
   return { action, primaryPlayerId: primary.playerId, secondaryPlayerId: secondary.playerId }
 }

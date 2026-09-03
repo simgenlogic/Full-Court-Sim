@@ -1,49 +1,21 @@
 import { selectAction } from './actionSelect'
 import { effectiveShotClock } from './clock'
-import { actionWaypoints, shotSpot } from './courtSpots'
+import { actionWaypoints, BACKCOURT, shotSpot, TOP_OF_KEY } from './courtSpots'
+import { resolveOffensiveChain } from './possessionChain'
 import {
   computeOpenness,
   computeShotProbability,
   driveTurnoverProbability,
   freeThrowProbability,
   nonShootingFoulProbability,
-  passSuccessProbability,
-  possessionDuration,
   resolveRebound,
+  setupDuration,
   shootingFoulProbability,
 } from './probability'
-import { effectiveRating, getOnCourtPlayers, pickThreePointThreat } from './ratings'
+import { effectiveRating, getOnCourtPlayers } from './ratings'
 import type { RNG } from './rng'
 import { rngChance } from './rng'
-import type { ActionType, GameEvent, GameState, PlayerRuntimeState, ShotType, TeamRuntimeState } from './types'
-
-type ShotRole = 'primary' | 'secondary' | 'kickOut'
-
-const SHOT_TABLE: Record<ActionType, { role: ShotRole; shotType: ShotType; weight: number }[]> = {
-  transition: [
-    { role: 'primary', shotType: 'rim', weight: 0.7 },
-    { role: 'kickOut', shotType: 'three', weight: 0.3 },
-  ],
-  'pick-and-roll': [
-    { role: 'primary', shotType: 'mid', weight: 0.45 },
-    { role: 'secondary', shotType: 'rim', weight: 0.35 },
-    { role: 'kickOut', shotType: 'three', weight: 0.2 },
-  ],
-  'drive-and-kick': [
-    { role: 'primary', shotType: 'rim', weight: 0.3 },
-    { role: 'secondary', shotType: 'three', weight: 0.55 },
-    { role: 'primary', shotType: 'mid', weight: 0.15 },
-  ],
-  motion: [
-    { role: 'secondary', shotType: 'three', weight: 0.6 },
-    { role: 'primary', shotType: 'mid', weight: 0.25 },
-    { role: 'primary', shotType: 'rim', weight: 0.15 },
-  ],
-  'post-up': [
-    { role: 'secondary', shotType: 'rim', weight: 0.7 },
-    { role: 'primary', shotType: 'three', weight: 0.3 },
-  ],
-}
+import type { GameEvent, GameState, PlayerRuntimeState, ShotType, TeamRuntimeState } from './types'
 
 function shooterRatingForShot(shooter: PlayerRuntimeState, shotType: ShotType): number {
   const base =
@@ -129,8 +101,10 @@ export function* simulatePossession(
   const possessionId = `poss-${eventSeq}`
   const nextId = () => `ev-${String(eventSeq++).padStart(5, '0')}`
 
-  let secondsRemaining = state.clock.gameSecondsRemaining
-  const snapshot = () => ({ quarter: state.clock.quarter, gameSecondsRemaining: Math.round(secondsRemaining) })
+  // Shared mutable clock: simulatePossession and the delegated chain generator both read/write
+  // this same object, so every yielded event carries an accurate, already-decreasing snapshot.
+  const timeBox = { value: state.clock.gameSecondsRemaining }
+  const snapshot = () => ({ quarter: state.clock.quarter, gameSecondsRemaining: Math.round(timeBox.value) })
   const base = () => ({ gameClock: snapshot(), possessionId, teamId: offenseTeamId })
 
   yield {
@@ -144,22 +118,29 @@ export function* simulatePossession(
     shotClockSeconds,
   }
 
-  const ceiling = effectiveShotClock({ ...state.clock, shotClockSeconds, gameSecondsRemaining: secondsRemaining })
+  const ceiling = effectiveShotClock({ ...state.clock, shotClockSeconds, gameSecondsRemaining: timeBox.value })
   const { action, primaryPlayerId, secondaryPlayerId } = selectAction(offense, defense, ceiling, lastPossessionWasLiveTurnover, rng)
 
   yield { ...base(), id: nextId(), type: 'action-selected', action, primaryPlayerId, secondaryPlayerId }
+
+  // Bring the ball up before running the halfcourt action — 'transition' already models the full
+  // backcourt-to-rim sprint as its own move below, so it skips this separate setup beat.
+  if (action !== 'transition') {
+    yield { ...base(), id: nextId(), type: 'move-to-position', playerId: primaryPlayerId, fromXY: BACKCOURT, toXY: TOP_OF_KEY, durationMs: 1100 }
+  }
 
   for (const wp of actionWaypoints(action, primaryPlayerId, secondaryPlayerId, rng)) {
     yield { ...base(), id: nextId(), type: 'move-to-position', playerId: wp.playerId, fromXY: wp.fromXY, toXY: wp.toXY, durationMs: wp.durationMs }
   }
 
-  const drawnDuration = possessionDuration(action, rng)
-  if (drawnDuration >= ceiling) {
-    secondsRemaining = Math.max(0, secondsRemaining - ceiling)
-    yield { ...base(), id: nextId(), gameClock: snapshot(), type: 'shot-clock-violation' }
+  // Transition has no separate "bring it up and set up" phase — the fast break itself is the setup.
+  const setupCost = action === 'transition' ? 0 : setupDuration(rng)
+  if (setupCost >= ceiling) {
+    timeBox.value = Math.max(0, timeBox.value - ceiling)
+    yield { ...base(), id: nextId(), type: 'shot-clock-violation' }
     return
   }
-  secondsRemaining = Math.max(0, secondsRemaining - drawnDuration)
+  timeBox.value = Math.max(0, timeBox.value - setupCost)
 
   const primary = offense.players[primaryPlayerId]!
   const primaryDefender = defenderOf.get(primaryPlayerId)!
@@ -223,39 +204,27 @@ export function* simulatePossession(
     return
   }
 
-  const entry = SHOT_TABLE[action]
-  const pick = weightedPick(rng, entry)
-  let shooterId: string
-  let passedFrom: string | undefined
-  if (pick.role === 'primary') {
-    shooterId = primaryPlayerId
-  } else if (pick.role === 'secondary' && secondaryPlayerId) {
-    shooterId = secondaryPlayerId
-    passedFrom = primaryPlayerId
-  } else {
-    const exclude = [primaryPlayerId, ...(secondaryPlayerId ? [secondaryPlayerId] : [])]
-    shooterId = pickThreePointThreat(offensePlayers, exclude, rng).playerId
-    passedFrom = secondaryPlayerId ?? primaryPlayerId
+  const chainResult = yield* resolveOffensiveChain({
+    action,
+    primaryPlayerId,
+    secondaryPlayerId,
+    offense,
+    offensePlayers,
+    defenderOf,
+    timeBox,
+    budgetSeconds: ceiling - setupCost,
+    base,
+    nextId,
+    rng,
+  })
+
+  if (chainResult.outcome === 'turnover' || chainResult.outcome === 'shot-clock-violation') {
+    return
   }
 
-  if (passedFrom) {
-    const passer = offense.players[passedFrom]!
-    const shooterDefender = defenderOf.get(shooterId)!
-    const passProb = passSuccessProbability(
-      effectiveRating(passer.ratings.passing, passer.fatigue),
-      effectiveRating(shooterDefender.ratings.perimeterDefense, shooterDefender.fatigue),
-    )
-    const completed = rngChance(rng, passProb)
-    yield { ...base(), id: nextId(), type: 'pass', fromPlayerId: passedFrom, toPlayerId: shooterId, completed }
-    if (!completed) {
-      yield { ...base(), id: nextId(), type: 'turnover', playerId: passedFrom, cause: 'bad-pass' }
-      return
-    }
-  }
-
+  const { shooterId, shotType, passedFrom } = chainResult
   const shooter = offense.players[shooterId]!
   const shooterDefender = defenderOf.get(shooterId)!
-  const shotType = pick.shotType
 
   const openness = computeOpenness({
     action,
@@ -365,14 +334,4 @@ export function* simulatePossession(
   // teamId here is the rebounding team (which may be offense on an ORB or defense on a DRB) —
   // more useful to a consumer than always echoing the possession's offense team.
   yield { ...base(), teamId: rebound.teamId, id: nextId(), type: 'rebound', playerId: rebound.playerId, isOffensive: rebound.isOffensive }
-}
-
-function weightedPick<T extends { weight: number }>(rng: RNG, items: T[]): T {
-  const total = items.reduce((sum, i) => sum + i.weight, 0)
-  let roll = rng() * total
-  for (const item of items) {
-    roll -= item.weight
-    if (roll <= 0) return item
-  }
-  return items[items.length - 1]!
 }

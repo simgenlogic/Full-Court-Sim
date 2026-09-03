@@ -61,7 +61,10 @@ export function computeOpenness(params: {
 }
 
 export function passSuccessProbability(passerRating: number, defenderRating: number, contest = 0): number {
-  return clamp(0.9 + (passerRating - defenderRating) / 400 - contest, 0.75, 0.98)
+  // Possessions now often involve 2-3 passes (see possessionChain.ts) rather than at most one, so
+  // this floor was recalibrated slightly up — otherwise the extra pass attempts alone push
+  // aggregate turnovers past a believable rate without any change in shot quality.
+  return clamp(0.93 + (passerRating - defenderRating) / 400 - contest, 0.82, 0.99)
 }
 
 export function driveTurnoverProbability(ballHandlingRating: number, defenderPerimeterDefense: number): number {
@@ -90,17 +93,18 @@ export function freeThrowProbability(finishingRating: number): number {
   return clamp(0.75 + (finishingRating - 50) / 250, 0.55, 0.92)
 }
 
-const BASE_POSSESSION_DURATION: Record<ActionType, number> = {
-  transition: 7,
-  'pick-and-roll': 15,
-  'drive-and-kick': 13,
-  motion: 17,
-  'post-up': 12,
+/** Time spent bringing the ball up and setting up the action, before any read/pass/shot decision. */
+export function setupDuration(rng: RNG): number {
+  return clamp(rngNormal(rng, 4, 1.5), 2, 8)
 }
 
-/** Modeled possession length in seconds — not real time, just how long this action takes to develop. */
-export function possessionDuration(action: ActionType, rng: RNG): number {
-  return clamp(rngNormal(rng, BASE_POSSESSION_DURATION[action], 3), 3, 24)
+/** Time one "beat" of a possession chain takes to develop — a hold, a screen, a read — whether or
+ * not it ends in a pass. Several of these accumulate across a possession's stages, so a possession
+ * with more ball movement now genuinely burns more of the shot clock than a quick catch-and-shoot.
+ * Calibrated (via tests/engine/simulateGame.test.ts's pace/PPG bounds) so combined setup + stage
+ * time reproduces a realistic ~14s average NBA-ish possession length once averaged across actions. */
+export function stageDuration(rng: RNG): number {
+  return clamp(rngNormal(rng, 5.5, 1.5), 3, 10)
 }
 
 export function resolveRebound(

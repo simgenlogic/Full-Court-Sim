@@ -109,3 +109,48 @@ describe('simulateGame statistical bounds (calibration gate)', () => {
     expect(topg).toBeLessThan(22)
   })
 })
+
+describe('possession flow (ball movement, not just a single shooter roll)', () => {
+  // Regression coverage for the "every play resolves in 0-1 passes" issue: a possession chain
+  // should meaningfully vary in how many times the ball moves before a shot goes up, rather than
+  // capping out at one pass every time.
+  function completedPassCountsPerPossession(seedCount: number): number[] {
+    const counts: number[] = []
+    for (let seed = 1; seed <= seedCount; seed++) {
+      const state = simulateGame(ironhawks, thunderbolts, seed)
+      let inPossession = false
+      let passes = 0
+      for (const event of state.events) {
+        if (event.type === 'action-selected') {
+          inPossession = true
+          passes = 0
+        } else if (event.type === 'pass' && event.completed) {
+          passes++
+        } else if (inPossession && (event.type === 'shot-attempt' || event.type === 'turnover' || event.type === 'shot-clock-violation')) {
+          counts.push(passes)
+          inPossession = false
+        }
+      }
+    }
+    return counts
+  }
+
+  it('possessions routinely involve more than one pass, not just 0-1', () => {
+    const counts = completedPassCountsPerPossession(40)
+    expect(counts.length).toBeGreaterThan(500)
+
+    const average = counts.reduce((sum, c) => sum + c, 0) / counts.length
+    const twoOrMorePassShare = counts.filter((c) => c >= 2).length / counts.length
+
+    expect(average).toBeGreaterThan(0.4)
+    expect(twoOrMorePassShare).toBeGreaterThan(0.08)
+  })
+
+  it('every possession-ending pass count is non-negative and bounded by the playbook depth', () => {
+    const counts = completedPassCountsPerPossession(10)
+    for (const c of counts) {
+      expect(c).toBeGreaterThanOrEqual(0)
+      expect(c).toBeLessThanOrEqual(3)
+    }
+  })
+})
