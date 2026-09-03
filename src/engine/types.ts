@@ -100,6 +100,9 @@ export interface PossessionStartEvent extends BaseEvent {
   defenseTeamId: string
   lineupOffense: string[]
   lineupDefense: string[]
+  // A "possession" here is one shot-clock cycle: an offensive rebound starts a new possession
+  // for the same team with a 14s clock rather than continuing the prior one at 24s.
+  shotClockSeconds: number
 }
 
 export interface ActionSelectedEvent extends BaseEvent {
