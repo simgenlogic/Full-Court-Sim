@@ -234,7 +234,7 @@ export function* simulatePossession(
     passedFrom = primaryPlayerId
   } else {
     const exclude = [primaryPlayerId, ...(secondaryPlayerId ? [secondaryPlayerId] : [])]
-    shooterId = pickThreePointThreat(offensePlayers, exclude).playerId
+    shooterId = pickThreePointThreat(offensePlayers, exclude, rng).playerId
     passedFrom = secondaryPlayerId ?? primaryPlayerId
   }
 

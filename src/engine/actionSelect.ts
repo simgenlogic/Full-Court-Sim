@@ -29,7 +29,7 @@ export function selectAction(
 ): SelectedAction {
   const offensePlayers = getOnCourtPlayers(offense)
   const defensePlayers = getOnCourtPlayers(defense)
-  const primary = pickBallHandler(offensePlayers)
+  const primary = pickBallHandler(offensePlayers, rng)
 
   // Under shot-clock pressure, skip the read entirely and just get a quick look off.
   if (effectiveShotClockSeconds < SHOT_CLOCK_PRESSURE_THRESHOLD) {
@@ -58,6 +58,6 @@ export function selectAction(
 
   // For post-up, "secondary" is the post player who receives the entry pass and is the primary
   // scoring option; "primary" stays the ball handler who makes the entry pass.
-  const secondary = pickScreener(offensePlayers, primary.playerId)
+  const secondary = pickScreener(offensePlayers, primary.playerId, rng)
   return { action, primaryPlayerId: primary.playerId, secondaryPlayerId: secondary.playerId }
 }

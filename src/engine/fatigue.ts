@@ -1,11 +1,14 @@
 import { clamp } from './rng'
 import type { GameState, TeamRuntimeState } from './types'
 
-const BENCH_RECOVERY_PER_SECOND = 0.08
+const BENCH_RECOVERY_PER_SECOND = 0.15
 
+// Calibrated so an average-stamina (50) player hits the substitution threshold (fatigue > 75)
+// after roughly 6-7 continuous minutes on court, and a high-stamina (90+) player can play close
+// to a full quarter before needing a rest — matching real rotation patterns.
 /** Higher stamina rating = slower fatigue accrual per second on court. */
 export function fatigueGainPerSecond(staminaRating: number): number {
-  return 0.015 * (1 - staminaRating / 150)
+  return 0.28 * (1 - staminaRating / 150)
 }
 
 /**

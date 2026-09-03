@@ -1,3 +1,5 @@
+import type { RNG } from './rng'
+import { rngPick } from './rng'
 import type { PlayerRatings, PlayerRuntimeState, TeamRuntimeState } from './types'
 
 /** Fatigue-adjusted rating: a fully fatigued player performs meaningfully worse across the board. */
@@ -13,24 +15,34 @@ export function getOnCourtPlayers(team: TeamRuntimeState): PlayerRuntimeState[] 
 
 const GUARD_BONUS: Partial<Record<PlayerRuntimeState['position'], number>> = { PG: 10, SG: 5 }
 
-/** Best ball handler on the floor: ballHandling + passing composite, nudged toward guards. */
-export function pickBallHandler(players: PlayerRuntimeState[]): PlayerRuntimeState {
-  return maxBy(players, (p) => {
+/**
+ * Weighted-random role pick rather than a deterministic argmax: over a whole game every on-court
+ * player should touch the ball sometimes, just skewed toward whoever's better suited to the role.
+ * Squaring the composite score keeps that skew meaningful without making it exclusive.
+ */
+function weightedPickBy<T>(items: T[], rng: RNG, score: (item: T) => number): T {
+  const weights = items.map((item) => Math.max(score(item), 0.01) ** 2)
+  return rngPick(rng, items, weights)
+}
+
+/** Ball handler for this possession: ballHandling + passing composite, nudged toward guards. */
+export function pickBallHandler(players: PlayerRuntimeState[], rng: RNG): PlayerRuntimeState {
+  return weightedPickBy(players, rng, (p) => {
     const composite = effectiveRating(p.ratings.ballHandling, p.fatigue) * 0.5 + effectiveRating(p.ratings.passing, p.fatigue) * 0.5
     return composite + (GUARD_BONUS[p.position] ?? 0)
   })
 }
 
-/** Best screener/roll-man proxy: interior defense + rebounding composite (a stand-in for size/post skill). */
-export function pickScreener(players: PlayerRuntimeState[], excludeId: string): PlayerRuntimeState {
+/** Screener/roll-man proxy for this possession: interior defense + rebounding composite. */
+export function pickScreener(players: PlayerRuntimeState[], excludeId: string, rng: RNG): PlayerRuntimeState {
   const pool = players.filter((p) => p.playerId !== excludeId)
-  return maxBy(pool, (p) => effectiveRating(p.ratings.interiorDefense, p.fatigue) * 0.5 + effectiveRating(p.ratings.rebounding, p.fatigue) * 0.5)
+  return weightedPickBy(pool, rng, (p) => effectiveRating(p.ratings.interiorDefense, p.fatigue) * 0.5 + effectiveRating(p.ratings.rebounding, p.fatigue) * 0.5)
 }
 
-export function pickThreePointThreat(players: PlayerRuntimeState[], excludeIds: string[]): PlayerRuntimeState {
+export function pickThreePointThreat(players: PlayerRuntimeState[], excludeIds: string[], rng: RNG): PlayerRuntimeState {
   const pool = players.filter((p) => !excludeIds.includes(p.playerId))
   const candidates = pool.length > 0 ? pool : players
-  return maxBy(candidates, (p) => effectiveRating(p.ratings.threePoint, p.fatigue))
+  return weightedPickBy(candidates, rng, (p) => effectiveRating(p.ratings.threePoint, p.fatigue))
 }
 
 export function weakestInteriorDefender(players: PlayerRuntimeState[]): PlayerRuntimeState {

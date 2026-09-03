@@ -4,7 +4,7 @@ import type { ActionType, DefenseStyle, PlayerRuntimeState, ShotType } from './t
 
 // League-average-ish anchors, tuned so aggregate simulated stat lines land in believable ranges
 // (validated by the statistical-bounds tests in tests/engine/simulateGame.stats.test.ts).
-const BASE_SHOT_RATE: Record<ShotType, number> = { rim: 0.58, mid: 0.4, three: 0.35 }
+const BASE_SHOT_RATE: Record<ShotType, number> = { rim: 0.63, mid: 0.45, three: 0.43 }
 
 export function computeShotProbability(params: {
   shooterRating: number
