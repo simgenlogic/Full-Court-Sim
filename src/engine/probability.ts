@@ -68,6 +68,28 @@ export function driveTurnoverProbability(ballHandlingRating: number, defenderPer
   return clamp(0.12 - (ballHandlingRating - defenderPerimeterDefense) / 500, 0.04, 0.2)
 }
 
+/** Chance a shot attempt (make or miss) also draws a shooting foul. */
+export function shootingFoulProbability(defenderRating: number, openness: number): number {
+  const weakDefenderBump = defenderRating < 40 ? 0.03 : 0
+  return clamp(0.06 + weakDefenderBump - openness * 0.03, 0.02, 0.12)
+}
+
+const NON_SHOOTING_FOUL_RATE: Record<DefenseStyle, number> = {
+  drop: 0.04,
+  switch: 0.055,
+  'help-heavy': 0.06,
+}
+
+/** Independent per-possession chance of an off-ball/loose-ball foul, scaled by defensive aggressiveness. */
+export function nonShootingFoulProbability(defenseStyle: DefenseStyle): number {
+  return NON_SHOOTING_FOUL_RATE[defenseStyle]
+}
+
+/** Free-throw make probability — mostly routine, lightly modulated by the shooter's finishing touch. */
+export function freeThrowProbability(finishingRating: number): number {
+  return clamp(0.75 + (finishingRating - 50) / 250, 0.55, 0.92)
+}
+
 const BASE_POSSESSION_DURATION: Record<ActionType, number> = {
   transition: 7,
   'pick-and-roll': 15,

@@ -114,4 +114,50 @@ describe('simulatePossession', () => {
       expect(event.gameClock.gameSecondsRemaining).toBeLessThanOrEqual(5)
     }
   })
+
+  it('produces shooting fouls, non-shooting fouls, and offensive fouls over enough possessions', () => {
+    const allEvents = Array.from({ length: 15 }, (_, seed) => runPossessions(seed + 200, 300).possessions)
+      .flat()
+      .flat()
+    const fouls = allEvents.filter((e) => e.type === 'foul')
+    expect(fouls.length).toBeGreaterThan(0)
+    const foulTypes = new Set(fouls.map((f) => (f.type === 'foul' ? f.foulType : undefined)))
+    expect(foulTypes.has('shooting')).toBe(true)
+    expect(foulTypes.has('non-shooting')).toBe(true)
+    expect(foulTypes.has('offensive')).toBe(true)
+  })
+
+  it('free-throw trips always carry a consistent attempt count for their situation', () => {
+    const allEvents = Array.from({ length: 15 }, (_, seed) => runPossessions(seed + 300, 300).possessions)
+      .flat()
+      .flat()
+    const freeThrows = allEvents.filter((e) => e.type === 'free-throw')
+    expect(freeThrows.length).toBeGreaterThan(0)
+    for (const ft of freeThrows) {
+      if (ft.type !== 'free-throw') continue
+      expect([1, 2, 3]).toContain(ft.totalAttempts)
+      expect(ft.attemptNumber).toBeGreaterThanOrEqual(1)
+      expect(ft.attemptNumber).toBeLessThanOrEqual(ft.totalAttempts)
+    }
+  })
+
+  it('a made shot paired with a shooting foul (and-one) awards exactly one free throw', () => {
+    const allEvents = Array.from({ length: 15 }, (_, seed) => runPossessions(seed + 400, 300).possessions).flat()
+    for (const events of allEvents) {
+      const shotIndex = events.findIndex((e) => e.type === 'shot-attempt' && e.made && e.fouled)
+      if (shotIndex === -1) continue
+      const trailingFreeThrows = events.slice(shotIndex).filter((e) => e.type === 'free-throw')
+      expect(trailingFreeThrows).toHaveLength(1)
+    }
+  })
+
+  it('a missed shot paired with a shooting foul awards 2 free throws (or 3 for a three-point attempt)', () => {
+    const allEvents = Array.from({ length: 15 }, (_, seed) => runPossessions(seed + 500, 300).possessions).flat()
+    for (const events of allEvents) {
+      const shot = events.find((e) => e.type === 'shot-attempt' && !e.made && e.fouled)
+      if (!shot || shot.type !== 'shot-attempt') continue
+      const freeThrows = events.filter((e) => e.type === 'free-throw')
+      expect(freeThrows).toHaveLength(shot.shotType === 'three' ? 3 : 2)
+    }
+  })
 })
